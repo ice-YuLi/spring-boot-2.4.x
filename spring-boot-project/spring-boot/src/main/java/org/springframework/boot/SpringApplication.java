@@ -282,10 +282,14 @@ public class SpringApplication {
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
+		// 推断应用类型，后面会根据类型初始化对应的环境。常用的一般都是servlet环境
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
 		this.bootstrapRegistryInitializers = getBootstrapRegistryInitializersFromSpringFactories();
+		// 初始化classpath下 META-INF/spring.factories中已配置的ApplicationContextInitializer
 		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+		// 初始化classpath下 META-INF/spring.factories中已配置的 ApplicationListener。
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+		// 根据调用栈，推断出 main 方法的类名
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
 
@@ -321,27 +325,48 @@ public class SpringApplication {
 	 * @return a running {@link ApplicationContext}
 	 */
 	public ConfigurableApplicationContext run(String... args) {
+		// 大致流程：
+		// 第一步：获取并启动监听器
+		// 第二步：构造应用上下文环境
+		// 第三步：初始化应用上下文
+		// 第四步：刷新应用上下文前的准备阶段
+		// 第五步：刷新应用上下文
+		// 第六步：刷新应用上下文后的扩展接口
+
+		// 记录程序运行时间
 		StopWatch stopWatch = new StopWatch();
 		stopWatch.start();
 		DefaultBootstrapContext bootstrapContext = createBootstrapContext();
+		// ConfigurableApplicationContext Spring 的上下文
 		ConfigurableApplicationContext context = null;
 		configureHeadlessProperty();
+		// 从META-INF/spring.factories中获取监听器
 		SpringApplicationRunListeners listeners = getRunListeners(args);
+		// 1.启动监听器
 		listeners.starting(bootstrapContext, this.mainApplicationClass);
 		try {
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+			// 2.构造容器环境,构造应用上下文环境
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, bootstrapContext, applicationArguments);
+			// 处理需要忽略的Bean
 			configureIgnoreBeanInfo(environment);
+			// 打印banner
 			Banner printedBanner = printBanner(environment);
+			// 3.初始化容器
 			context = createApplicationContext();
 			context.setApplicationStartup(this.applicationStartup);
+			// 4.刷新容器前的准备阶段
 			prepareContext(bootstrapContext, context, environment, listeners, applicationArguments, printedBanner);
+			// 5.刷新容器
 			refreshContext(context);
+			// 6.刷新容器后的扩展接口
 			afterRefresh(context, applicationArguments);
+			// 时间记录停止
 			stopWatch.stop();
 			if (this.logStartupInfo) {
 				new StartupInfoLogger(this.mainApplicationClass).logStarted(getApplicationLog(), stopWatch);
 			}
+			// 发布容器启动完成事件
 			listeners.started(context);
 			callRunners(context, applicationArguments);
 		}
@@ -367,11 +392,14 @@ public class SpringApplication {
 	}
 
 	private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
-			DefaultBootstrapContext bootstrapContext, ApplicationArguments applicationArguments) {
+													   DefaultBootstrapContext bootstrapContext, ApplicationArguments applicationArguments) {
 		// Create and configure the environment
+		// 创建并配置相应的环境
 		ConfigurableEnvironment environment = getOrCreateEnvironment();
+		// 根据用户配置，配置 environment系统环境
 		configureEnvironment(environment, applicationArguments.getSourceArgs());
 		ConfigurationPropertySources.attach(environment);
+		// 启动相应的监听器，其中一个重要的监听器 ConfigFileApplicationListener 就是加载项目配置文件的监听器。
 		listeners.environmentPrepared(bootstrapContext, environment);
 		DefaultPropertiesPropertySource.moveToEnd(environment);
 		bindToSpringApplication(environment);
@@ -385,20 +413,21 @@ public class SpringApplication {
 
 	private Class<? extends StandardEnvironment> deduceEnvironmentClass() {
 		switch (this.webApplicationType) {
-		case SERVLET:
-			return StandardServletEnvironment.class;
-		case REACTIVE:
-			return StandardReactiveWebEnvironment.class;
-		default:
-			return StandardEnvironment.class;
+			case SERVLET:
+				return StandardServletEnvironment.class;
+			case REACTIVE:
+				return StandardReactiveWebEnvironment.class;
+			default:
+				return StandardEnvironment.class;
 		}
 	}
 
 	private void prepareContext(DefaultBootstrapContext bootstrapContext, ConfigurableApplicationContext context,
-			ConfigurableEnvironment environment, SpringApplicationRunListeners listeners,
-			ApplicationArguments applicationArguments, Banner printedBanner) {
+								ConfigurableEnvironment environment, SpringApplicationRunListeners listeners,
+								ApplicationArguments applicationArguments, Banner printedBanner) {
 		context.setEnvironment(environment);
 		postProcessApplicationContext(context);
+		// applyInitializers
 		applyInitializers(context);
 		listeners.contextPrepared(context);
 		bootstrapContext.close(context);
@@ -445,27 +474,36 @@ public class SpringApplication {
 
 	private SpringApplicationRunListeners getRunListeners(String[] args) {
 		Class<?>[] types = new Class<?>[] { SpringApplication.class, String[].class };
+		// 初始化classpath下 META-INF/spring.factories中已配置的 SpringApplicationRunListener。
 		return new SpringApplicationRunListeners(logger,
+				// EventPublishingRunListener监听器是Spring容器的启动监听器
 				getSpringFactoriesInstances(SpringApplicationRunListener.class, types, this, args),
 				this.applicationStartup);
 	}
 
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type) {
+		// see again
 		return getSpringFactoriesInstances(type, new Class<?>[] {});
 	}
 
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
 		ClassLoader classLoader = getClassLoader();
 		// Use names and ensure unique to protect against duplicates
+		// 通过指定的classLoader从 META-INF/spring.factories 的资源文件中，
+		// 读取 key 为 type.getName() 的 value
+		// spring-boot#META-INF/spring.factories
+		// spring-boot-autoconfigure##META-INF/spring.factories
 		Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+		// 创建Spring工厂实例
 		List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
+		// 对Spring工厂实例排序（org.springframework.core.annotation.Order注解指定的顺序）
 		AnnotationAwareOrderComparator.sort(instances);
 		return instances;
 	}
 
 	@SuppressWarnings("unchecked")
 	private <T> List<T> createSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes,
-			ClassLoader classLoader, Object[] args, Set<String> names) {
+													   ClassLoader classLoader, Object[] args, Set<String> names) {
 		List<T> instances = new ArrayList<>(names.size());
 		for (String name : names) {
 			try {
@@ -487,13 +525,17 @@ public class SpringApplication {
 			return this.environment;
 		}
 		switch (this.webApplicationType) {
-		case SERVLET:
-			return new StandardServletEnvironment();
-		case REACTIVE:
-			return new StandardReactiveWebEnvironment();
-		default:
-			return new StandardEnvironment();
+			// 如果应用类型是 SERVLET 则实例化 StandardServletEnvironment
+			case SERVLET:
+				return new StandardServletEnvironment();
+			// 如果应用类型是 REACTIVE 则实例化 StandardReactiveWebEnvironment
+			case REACTIVE:
+				return new StandardReactiveWebEnvironment();
+			// 否则实例化 StandardEnvironment
+			default:
+				return new StandardEnvironment();
 		}
+		// 在前文的的 SpringApplication#deduceFromClasspath 中对 this.webApplicationType 赋值
 	}
 
 	/**
@@ -632,6 +674,8 @@ public class SpringApplication {
 	 */
 	@SuppressWarnings({ "rawtypes", "unchecked" })
 	protected void applyInitializers(ConfigurableApplicationContext context) {
+		// 遍历调用每一个被加载的 ApplicationContextInitializer 的  initialize(context);  方法，并
+		// 将 ConfigurableApplicationContext 的实例传递给 initialize 方法。
 		for (ApplicationContextInitializer initializer : getInitializers()) {
 			Class<?> requiredType = GenericTypeResolver.resolveTypeArgument(initializer.getClass(),
 					ApplicationContextInitializer.class);
@@ -813,7 +857,7 @@ public class SpringApplication {
 	}
 
 	private void handleRunFailure(ConfigurableApplicationContext context, Throwable exception,
-			SpringApplicationRunListeners listeners) {
+								  SpringApplicationRunListeners listeners) {
 		try {
 			try {
 				handleExitCode(context, exception);
@@ -1315,6 +1359,7 @@ public class SpringApplication {
 	 * @return the running {@link ApplicationContext}
 	 */
 	public static ConfigurableApplicationContext run(Class<?> primarySource, String... args) {
+		// 参考链接：https://www.cnblogs.com/hello-shf/p/10976646.html
 		return run(new Class<?>[] { primarySource }, args);
 	}
 
@@ -1326,6 +1371,7 @@ public class SpringApplication {
 	 * @return the running {@link ApplicationContext}
 	 */
 	public static ConfigurableApplicationContext run(Class<?>[] primarySources, String[] args) {
+		// 查看构造方法
 		return new SpringApplication(primarySources).run(args);
 	}
 
