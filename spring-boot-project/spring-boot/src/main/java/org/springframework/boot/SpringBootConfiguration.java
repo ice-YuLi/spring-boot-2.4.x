@@ -47,6 +47,8 @@ import org.springframework.stereotype.Indexed;
 @Configuration
 @Indexed
 public @interface SpringBootConfiguration {
+	// 从其源码可以看出，它就是一个@Configuration，从2.2版本加入进来的，代表当前是一个配置类，也就是
+	// 说public static void main(){}所在的类也是容器中的一个配置类
 
 	/**
 	 * Specify whether {@link Bean @Bean} methods should get proxied in order to enforce

@@ -25,6 +25,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+// 参考链接：https://blog.csdn.net/qq_36928041/article/details/111416198
 @SpringBootApplication
 public class SampleSpringXmlApplication implements CommandLineRunner {
 

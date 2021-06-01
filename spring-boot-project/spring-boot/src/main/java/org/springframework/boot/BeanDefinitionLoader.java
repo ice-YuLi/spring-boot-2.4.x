@@ -85,10 +85,14 @@ class BeanDefinitionLoader {
 		Assert.notNull(registry, "Registry must not be null");
 		Assert.notEmpty(sources, "Sources must not be empty");
 		this.sources = sources;
+		// 注解形式的Bean定义读取器 比如：@Configuration @Bean @Component @Controller @Service等等
 		this.annotatedReader = new AnnotatedBeanDefinitionReader(registry);
+		// XML形式的Bean定义读取器
 		this.xmlReader = (XML_ENABLED ? new XmlBeanDefinitionReader(registry) : null);
 		this.groovyReader = (isGroovyPresent() ? new GroovyBeanDefinitionReader(registry) : null);
+		// 类路径扫描器
 		this.scanner = new ClassPathBeanDefinitionScanner(registry);
+		// 扫描器添加排除过滤器
 		this.scanner.addExcludeFilter(new ClassExcludeFilter(sources));
 	}
 
@@ -133,24 +137,29 @@ class BeanDefinitionLoader {
 	 */
 	void load() {
 		for (Object source : this.sources) {
+			// load(source)
 			load(source);
 		}
 	}
 
 	private void load(Object source) {
 		Assert.notNull(source, "Source must not be null");
+		// 从Class加载
 		if (source instanceof Class<?>) {
 			load((Class<?>) source);
 			return;
 		}
+		// 从Resource加载
 		if (source instanceof Resource) {
 			load((Resource) source);
 			return;
 		}
+		// 从Package加载
 		if (source instanceof Package) {
 			load((Package) source);
 			return;
 		}
+		// 从 CharSequence 加载 ？？？
 		if (source instanceof CharSequence) {
 			load((CharSequence) source);
 			return;
@@ -164,7 +173,9 @@ class BeanDefinitionLoader {
 			GroovyBeanDefinitionSource loader = BeanUtils.instantiateClass(source, GroovyBeanDefinitionSource.class);
 			((GroovyBeanDefinitionReader) this.groovyReader).beans(loader.getBeans());
 		}
+		// isComponent(source)判断主类是不是存在@Component注解，主类@SpringBootApplication是一个组合注解，包含@Component。
 		if (isEligible(source)) {
+			// 将 启动类的 BeanDefinition注册进 beanDefinitionMap
 			this.annotatedReader.register(source);
 		}
 	}
